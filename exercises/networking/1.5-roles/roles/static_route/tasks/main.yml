@@ -1,6 +1,6 @@
 ##Configuration of static route
 - name: Static route between R1 and R2
-  net_static_route:
+  ios_static_route:
     prefix: "{{private_ip}}"
     mask: "{{mask}}"
     next_hop: "{{next_hop}}"

@@ -12,14 +12,25 @@
           - ansible_version.major >= 2
           - ansible_version.minor >= 6
 
-    - name: grab boto version
-      command: python -c 'import boto3; print(boto3.__version__)'
-      register: py_cmd
-
-    - name: make sure we are running correct boto version
+      # F5workshop and networking workshop are two different workshops
+    - name: make sure f5workshop is not turned on when networking is
       assert:
+        msg: "f5workshop and networking are mutually exclusive. Choose only one."
         that:
-        - py_cmd.stdout.startswith('1.7')
+          - not f5workshop
+      when: networking
+
+      # F5workshop and networking workshop are two different workshops
+    - name: make sure networking is not turned on when f5workshop is
+      assert:
+        msg: "networking and f5workshop are mutually exclusive. Choose only one."
+        that:
+          - not networking
+      when: f5workshop
+
+    - name: run role to check if local environment setup will work with AWS
+      include_role:
+        name: aws_check_setup
 
     - name: make sure we are not running with TESTWORKSHOP as the name so no overlap
       assert:
@@ -48,25 +59,6 @@
        - autolicense is defined
        - autolicense
 
-    - name: check for underscores
-      fail:
-        msg: "Amazon AWS does not allow underscores _ for s3 websites, please see https://docs.aws.amazon.com/AmazonS3/latest/dev/BucketRestrictions.html"
-      when:
-        - create_login_page is defined
-        - create_login_page
-        - "'_' in ec2_name_prefix"
-
-    - name: grab information about AWS user
-      aws_caller_facts:
-        region: "{{ ec2_region }}"
-      register: whoami
-
-    - name: save username of AWS user
-      set_fact:
-         linklight_user: '{{ whoami.arn.split("/")[-1] }}'
-
-    - debug: msg='{{ whoami.arn.split("/")[-1] }}'
-
 - name: Create lab instances in AWS
   hosts: localhost
   connection: local
@@ -81,7 +73,6 @@
   hosts: "managed_nodes:control_nodes"
   become: yes
   gather_facts: no
-
   roles:
     - connectivity_test
 
@@ -92,11 +83,19 @@
     - user_accounts
     - common
 
-- name: Configure control node
+- name: CONFIGURE F5 WORKSHOP WEBSERVERS host1 and host2
+  hosts: lab_hosts
+  become: yes
+  gather_facts: no
+  roles:
+    - { role: webservers, when: f5workshop }
+
+- name: CONFIGURE CONTROL NODE
   hosts: control_nodes
   become: yes
   roles:
     - control_node
+  tags: control_node
 
 - name: Setup Amazon S3 Website for Student Login
   hosts: localhost
@@ -111,4 +110,62 @@
   become: no
   gather_facts: no
   roles:
-    - { role: network_hostroutes, when: networking is defined and networking }
+    - { role: network_hostroutes, when: networking }
+
+- name: setup f5 nodes
+  hosts: f5
+  become: no
+  connection: local
+  gather_facts: no
+  roles:
+    - { role: f5_setup, when: f5workshop }
+
+- name: GATHER AWS FACTS FOR ROUTERS
+  hosts: access,core
+  connection: local
+  gather_facts: no
+  roles:
+    - { role: gather_router_facts }
+
+- name: CONFIGURE ACCESS ROUTERS
+  hosts: access
+  connection: local
+  gather_facts: no
+
+  roles:
+    - role: configure_routers
+      vars:
+        type: csr_access
+        router3_tunnel: 100
+        router4_tunnel: 101
+
+- name: CONFIGURE CORE ROUTERS
+  hosts: core
+  connection: local
+  gather_facts: no
+
+  roles:
+    - role: configure_routers
+      vars:
+        type: csr_core
+        router1_tunnel: 100
+        router2_tunnel: 101
+        dci_tunnel: 200
+
+- name: CONFIGURE CORE ROUTERS
+  hosts: dmvpn
+  connection: local
+  gather_facts: no
+
+  roles:
+    - role: configure_routers
+      vars:
+        type: csr_hub
+
+- name: Alert the mothership
+  hosts: localhost
+  connection: local
+  become: no
+  gather_facts: no
+  roles:
+    - { role: tower_request, when: student_total > 9 }

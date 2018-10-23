@@ -38,7 +38,7 @@
 #     msg: "vpc id:'{{vpc_net_facts.vpcs[0].id}}'"
 #   when: vpc_net_facts.vpcs|length > 0
 
-- name: set variables for instance creation dynamically since VPC was not supplied by user
+- name: use set fact for easier variables
   set_fact:
     ec2_vpc_id: "{{vpc_net_facts.vpcs[0].id}}"
     ec2_security_group: "{{ ec2_name_prefix }}-insecure_all"

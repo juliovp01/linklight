@@ -1,6 +1,6 @@
 - block:
   - name: enable GigabitEthernet1 interface if compliant on r2
-    net_interface:
+    ios_interface:
       name: GigabitEthernet1
       description: interface to host1
       state: present
